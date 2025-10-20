@@ -80,11 +80,11 @@ std::string secsToTimeString(uint64 timeInSecs, bool shortText)
     std::ostringstream ss;
     if (days)
     {
-        ss << days << (shortText ? "d" : " day(s) ");
+        ss << days << (shortText ? "j" : " jour(s) ");
     }
     if (hours)
     {
-        ss << hours << (shortText ? "h" : " hour(s) ");
+        ss << hours << (shortText ? "h" : " heure(s) ");
     }
     if (minutes)
     {
@@ -92,7 +92,7 @@ std::string secsToTimeString(uint64 timeInSecs, bool shortText)
     }
     if (secs || (!days && !hours && !minutes))
     {
-        ss << secs << (shortText ? "s" : " second(s) ");
+        ss << secs << (shortText ? "s" : " seconde(s) ");
     }
 
     std::string str = ss.str();
@@ -119,6 +119,7 @@ Optional<int32> MoneyStringToMoney(std::string_view moneyString)
         switch (token[token.length() - 1])
         {
         case 'g':
+        case 'o':
             if (hadG)
             {
                 return std::nullopt;
@@ -127,6 +128,7 @@ Optional<int32> MoneyStringToMoney(std::string_view moneyString)
             unit = 100 * 100;
             break;
         case 's':
+        case 'a':
             if (hadS)
             {
                 return std::nullopt;
@@ -178,6 +180,7 @@ uint32 TimeStringToSecs(const std::string& timestring)
             switch (*itr)
             {
                 case 'd':
+                case 'j':
                     multiplier = DAY;
                     break;
                 case 'h':
