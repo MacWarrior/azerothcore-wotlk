@@ -30,5 +30,5 @@ using namespace Heigan;
 
 void AddSC_boss_heigan()
 {
-    new boss_heigan();
+    RegisterNaxxramasCreatureAI(boss_heigan);
 }
