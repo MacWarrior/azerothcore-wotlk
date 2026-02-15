@@ -1345,7 +1345,7 @@ void Unit::CalculateSpellDamageTaken(SpellNonMeleeDamage* damageInfo, int32 dama
     }
 
     int32 cleanDamage = 0;
-    if (Unit::IsDamageReducedByArmor(damageSchoolMask, spellInfo))
+    if (!spellInfo->HasAttribute(SPELL_ATTR4_IGNORE_DAMAGE_TAKEN_MODIFIERS) && Unit::IsDamageReducedByArmor(damageSchoolMask, spellInfo))
     {
         int32 oldDamage = damage;
         damage = Unit::CalcArmorReducedDamage(this, victim, damage, spellInfo, 0, attackType);
@@ -6568,7 +6568,6 @@ void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage* log)
     data << uint8 (log->physicalLog);                       // if 1, then client show spell name (example: %s's ranged shot hit %s for %u school or %s suffers %u school damage from %s's spell_name
     data << uint8 (log->unused);                            // unused
     data << uint32(log->blocked);                           // blocked
-    data << uint32(log->HitInfo);
     data << uint32(log->HitInfo);
     data << uint8(log->HitInfo & (SPELL_HIT_TYPE_CRIT_DEBUG | SPELL_HIT_TYPE_HIT_DEBUG | SPELL_HIT_TYPE_ATTACK_TABLE_DEBUG));
     //if (log->HitInfo & SPELL_HIT_TYPE_CRIT_DEBUG)
