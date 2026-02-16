@@ -310,6 +310,11 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
             continue;
         }
 
+        if( target.IsBot() )
+        {
+            continue;
+        }
+
         // check if target's level is in level range
         uint8 lvl = target.GetLevel();
         if (lvl < levelMin || lvl > levelMax)
