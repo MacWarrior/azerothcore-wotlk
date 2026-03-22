@@ -952,14 +952,14 @@ void WorldSession::HandleSetActionButtonOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleCompleteCinematic(WorldPacket& /*recv_data*/)
 {
-    // End the current cinematic and restore the normal player view
-    GetPlayer()->GetCinematicMgr().EndCinematic();
+    // If player has sight bound to visual waypoint NPC we should remove it
+    GetPlayer()->GetCinematicMgr()->EndCinematic();
 }
 
 void WorldSession::HandleNextCinematicCamera(WorldPacket& /*recv_data*/)
 {
     // Sent by client when cinematic actually begun. So we begin the server side process
-    GetPlayer()->GetCinematicMgr().StartCinematicCamera();
+    GetPlayer()->GetCinematicMgr()->BeginCinematic();
 }
 
 void WorldSession::HandleSetActionBarToggles(WorldPacket& recv_data)

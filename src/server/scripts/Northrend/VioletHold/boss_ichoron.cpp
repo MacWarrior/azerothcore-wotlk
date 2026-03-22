@@ -244,7 +244,7 @@ public:
             {
                 pSummoned->SetSpeed(MOVE_RUN, 0.3f);
                 pSummoned->RemoveUnitMovementFlag(MOVEMENTFLAG_WALKING);
-                pSummoned->GetMotionMaster()->MoveFollow(me, 0, 0, MOTION_SLOT_ACTIVE, false, false);
+                pSummoned->GetMotionMaster()->MoveFollow(me, 0, 0);
                 me->CastSpell(pSummoned, SPELL_CREATE_GLOBULE_VISUAL, true); // triggered should ignore los
                 globules.Summon(pSummoned);
                 if (pInstance)

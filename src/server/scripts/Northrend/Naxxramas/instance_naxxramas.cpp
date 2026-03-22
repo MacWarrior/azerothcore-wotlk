@@ -516,14 +516,11 @@ public:
                 // pull all the trash if not killed
                 if (Creature* patchwerk = GetCreature(DATA_PATCHWERK_BOSS))
                 {
-                    if (Unit* target = patchwerk->GetThreatMgr().GetCurrentVictim())
+                    for (auto& itr : _patchwerkRoomTrash)
                     {
-                        for (auto& itr : _patchwerkRoomTrash)
-                        {
-                            Creature* trash = ObjectAccessor::GetCreature(*patchwerk, itr);
-                            if (trash && trash->IsAlive() && !trash->IsInCombat())
-                                trash->AI()->AttackStart(target);
-                        }
+                        Creature* trash = ObjectAccessor::GetCreature(*patchwerk, itr);
+                        if (trash && trash->IsAlive() && !trash->IsInCombat())
+                            trash->AI()->AttackStart(patchwerk->GetVictim());
                     }
                 }
 

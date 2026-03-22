@@ -1362,12 +1362,6 @@ bool WorldObject::IsWithinDist2d(const Position* pos, float dist) const
     return IsInDist2d(pos, dist + GetObjectSize());
 }
 
-// Visibility always uses 2d checks, factors in self-object size already. Gameobjects will override this for custom calc
-bool WorldObject::IsWithinSightRange(Position const& pos, float dist) const
-{
-    return IsInDist2d(&pos, dist + GetObjectSize());
-}
-
 // use only if you will sure about placing both object at same map
 bool WorldObject::IsWithinDist(WorldObject const* obj, float dist2compare, bool is3D, bool incOwnRadius, bool incTargetRadius) const
 {
@@ -1680,7 +1674,7 @@ float WorldObject::GetGridActivationRange() const
 {
     if (ToPlayer())
     {
-        if (ToPlayer()->GetCinematicMgr().IsOnCinematic())
+        if (ToPlayer()->GetCinematicMgr()->IsOnCinematic())
         {
             return DEFAULT_VISIBILITY_INSTANCE;
         }
@@ -1731,7 +1725,7 @@ float WorldObject::GetSightRange(WorldObject const* target) const
                         return VISIBILITY_DIST_WINTERGRASP;
                     else if (target->IsVisibilityOverridden())
                         return target->GetVisibilityOverrideDistance();
-                    else if (ToPlayer()->GetCinematicMgr().IsOnCinematic())
+                    else if (ToPlayer()->GetCinematicMgr()->IsOnCinematic())
                         return DEFAULT_VISIBILITY_INSTANCE;
                     else
                         return GetMap()->GetVisibilityRange();
@@ -1800,10 +1794,10 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
     if (distanceCheck)
     {
         bool corpseCheck = false;
-        Position const* sightPosition = this;
+        WorldObject const* viewpoint = this;
         if (Player const* thisPlayer = ToPlayer())
         {
-            sightPosition = &thisPlayer->GetSightPosition();
+            viewpoint = thisPlayer->GetSeer();
 
             if (Creature const* creature = obj->ToCreature())
             {
@@ -1849,7 +1843,8 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
                 return false;
         }
 
-        if (!corpseCheck && !obj->IsWithinSightRange(*sightPosition, GetSightRange(obj)))
+        // Xinef: check reversely obj vs viewpoint, object could be a gameObject which overrides _IsWithinDist function to include gameobject size
+        if (!corpseCheck && !viewpoint->IsWithinDist(obj, GetSightRange(obj), false))
             return false;
     }
 

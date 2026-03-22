@@ -1232,15 +1232,18 @@ class spell_malygos_vortex_visual : public AuraScript
         if (!caster)
             return;
 
-        if (InstanceScript* instance = caster->GetInstanceScript())
+        for (auto const* ref : caster->GetThreatMgr().GetUnsortedThreatList())
         {
-            if (Creature* trigger = ObjectAccessor::GetCreature(*caster, instance->GetGuidData(DATA_VORTEX_TRIGGER)))
+            if (Player* player = ref->GetVictim()->ToPlayer())
             {
-                caster->GetMap()->DoForAllPlayers([&](Player* player)
+                if (player->IsGameMaster())
+                    continue;
+
+                if (InstanceScript* instance =caster->GetInstanceScript())
                 {
-                    if (player->IsAlive() && !player->IsGameMaster())
+                    if (Creature* trigger =ObjectAccessor::GetCreature(*caster, instance->GetGuidData(DATA_VORTEX_TRIGGER)))
                         trigger->CastSpell(player, SPELL_VORTEX_TELEPORT, true);
-                });
+                }
             }
         }
 

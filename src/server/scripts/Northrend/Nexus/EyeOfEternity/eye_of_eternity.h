@@ -49,7 +49,6 @@ enum NPCs
     NPC_SURGE_OF_POWER          = 30334,
     NPC_STATIC_FIELD            = 30592,
     NPC_ALEXSTRASZA             = 32295,
-    NPC_WYRMREST_SKYTALON       = 30161,
 };
 
 enum Data

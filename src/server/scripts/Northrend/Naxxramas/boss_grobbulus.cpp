@@ -82,22 +82,20 @@ public:
             dropSludgeTimer = 0;
         }
 
-        void PullChamberAdds(Unit* target)
+        void PullChamberAdds()
         {
-            if (!target)
-                return;
             std::list<Creature*> StichedGiants;
             me->GetCreaturesWithEntryInRange(StichedGiants, 300.0f, NPC_STICHED_GIANT);
             for (std::list<Creature*>::const_iterator itr = StichedGiants.begin(); itr != StichedGiants.end(); ++itr)
             {
-                (*itr)->ToCreature()->AI()->AttackStart(target);
+                (*itr)->ToCreature()->AI()->AttackStart(me->GetVictim());
             }
         }
 
         void JustEngagedWith(Unit* who) override
         {
             BossAI::JustEngagedWith(who);
-            PullChamberAdds(who);
+            PullChamberAdds();
             me->SetInCombatWithZone();
             events.ScheduleEvent(EVENT_POISON_CLOUD, 15s);
             events.ScheduleEvent(EVENT_MUTATING_INJECTION, 20s);

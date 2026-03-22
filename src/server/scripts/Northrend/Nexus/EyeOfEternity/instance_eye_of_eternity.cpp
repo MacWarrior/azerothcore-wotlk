@@ -56,10 +56,6 @@ struct instance_eye_of_eternity : public InstanceScript
 
         if (creature->GetEntry() == NPC_VORTEX)
             _vortexTriggers.push_back(creature->GetGUID());
-
-        if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
-            if (creature->GetEntry() == NPC_WYRMREST_SKYTALON)
-                creature->SetFaction(FACTION_FRIENDLY);
     }
 
     ObjectGuid GetGuidData(uint32 data) const override
@@ -72,22 +68,31 @@ struct instance_eye_of_eternity : public InstanceScript
 
     void VortexHandling()
     {
-        if (_vortexTriggers.empty())
+        Creature* malygos = GetCreature(DATA_MALYGOS);
+        if (!malygos)
             return;
 
-        size_t triggerIndex = 0;
-        size_t triggerCount = _vortexTriggers.size();
-
-        instance->DoForAllPlayers([&](Player* player)
+        for (ObjectGuid const& guid : _vortexTriggers)
         {
-            if (!player->IsAlive() || player->IsGameMaster())
-                return;
+            uint8 counter = 0;
+            if (Creature* trigger = instance->GetCreature(guid))
+            {
+                for (auto* ref : malygos->GetThreatMgr().GetUnsortedThreatList())
+                {
+                    if (counter >= 5)
+                        break;
 
-            if (Creature* trigger = instance->GetCreature(_vortexTriggers[triggerIndex]))
-                player->CastSpell(trigger, SPELL_VORTEX_4, true);
+                    if (Player* player = ref->GetVictim()->ToPlayer())
+                    {
+                        if (player->IsGameMaster() || player->HasAura(SPELL_VORTEX_4))
+                            continue;
 
-            triggerIndex = (triggerIndex + 1) % triggerCount;
-        });
+                        player->CastSpell(trigger, SPELL_VORTEX_4, true);
+                        counter++;
+                    }
+                }
+            }
+        }
     }
 
     void OnPlayerEnter(Player* player) override

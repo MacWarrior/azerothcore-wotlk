@@ -164,7 +164,11 @@ inline void Cell::VisitCircle(TypeContainerVisitor<T, CONTAINER>& visitor, Map& 
 template<class T>
 inline void Cell::VisitObjects(WorldObject const* center_obj, T& visitor, float radius)
 {
-    VisitObjects(center_obj->GetPositionX(), center_obj->GetPositionY(), center_obj->GetMap(), visitor, radius);
+    CellCoord p(Acore::ComputeCellCoord(center_obj->GetPositionX(), center_obj->GetPositionY()));
+    Cell cell(p);
+
+    TypeContainerVisitor<T, GridTypeMapContainer> gnotifier(visitor);
+    cell.Visit(p, gnotifier, *center_obj->GetMap(), *center_obj, radius);
 }
 
 template<class T>
@@ -180,17 +184,11 @@ inline void Cell::VisitObjects(float x, float y, Map* map, T& visitor, float rad
 template<class T>
 inline void Cell::VisitFarVisibleObjects(WorldObject const* center_obj, T& visitor, float radius)
 {
-    VisitFarVisibleObjects(center_obj->GetPositionX(), center_obj->GetPositionY(), center_obj->GetMap(), visitor, radius);
-}
-
-template<class T>
-inline void Cell::VisitFarVisibleObjects(float x, float y, Map* map, T& visitor, float radius)
-{
-    CellCoord p(Acore::ComputeCellCoord(x, y));
+    CellCoord p(Acore::ComputeCellCoord(center_obj->GetPositionX(), center_obj->GetPositionY()));
     Cell cell(p);
 
     TypeContainerVisitor<T, FarVisibleGridContainer> gnotifier(visitor);
-    cell.Visit(p, gnotifier, *map, x, y, radius);
+    cell.Visit(p, gnotifier, *center_obj->GetMap(), *center_obj, radius);
 }
 
 #endif

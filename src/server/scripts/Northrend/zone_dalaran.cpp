@@ -526,7 +526,6 @@ struct npc_minigob_manabonk : public ScriptedAI
     void Reset() override
     {
         me->SetVisible(false);
-        playerGUID.Clear();
         events.ScheduleEvent(EVENT_SELECT_TARGET, 1s);
     }
 
@@ -580,11 +579,6 @@ struct npc_minigob_manabonk : public ScriptedAI
                 case EVENT_POLYMORPH:
                     if (Player* player = ObjectAccessor::GetPlayer(*me, playerGUID))
                     {
-                        if (player->IsGameMaster())
-                        {
-                            me->DespawnOrUnsummon();
-                            return;
-                        }
                         DoCast(player, SPELL_MANABONKED);
                         SendMailToPlayer(player);
                     }
