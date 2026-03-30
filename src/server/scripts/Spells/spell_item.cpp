@@ -17,7 +17,6 @@
 
 #include "AreaDefines.h"
 #include "Battleground.h"
-#include "CreatureScript.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
 #include "Player.h"
@@ -3565,7 +3564,7 @@ class spell_item_rocket_boots : public SpellScript
     }
 };
 
-// 55002 - Flexweave Underlay
+// 55001 - Flexweave Underlay (Parachute)
 class spell_item_flexweave_underlay : public SpellScript
 {
     PrepareSpellScript(spell_item_flexweave_underlay);
@@ -3574,7 +3573,7 @@ class spell_item_flexweave_underlay : public SpellScript
     {
         if (GetCaster()->IsFlying() || GetCaster()->IsFalling())
             return SPELL_CAST_OK;
-        return SPELL_FAILED_NOT_FLYING;
+        return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
     }
 
     void Register() override
