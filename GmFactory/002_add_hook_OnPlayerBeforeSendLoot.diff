@@ -1,0 +1,63 @@
+diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
+index ee531531a..5d9195957 100644
+--- a/src/server/game/Entities/Player/Player.cpp
++++ b/src/server/game/Entities/Player/Player.cpp
+@@ -8195,6 +8195,8 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
+     {
+         SetLootGUID(guid);
+ 
++        sScriptMgr->OnPlayerBeforeSendLoot(this, guid, loot);
++
+         WorldPacket data(SMSG_LOOT_RESPONSE, (9 + 50));         // we guess size
+         data << guid;
+         data << uint8(loot_type);
+diff --git a/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp b/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
+index b3ce21803..a47a19e8a 100644
+--- a/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
++++ b/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
+@@ -132,6 +132,11 @@ void ScriptMgr::OnPlayerBeforeLootMoney(Player* player, Loot* loot)
+     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_BEFORE_LOOT_MONEY, script->OnPlayerBeforeLootMoney(player, loot));
+ }
+ 
++void ScriptMgr::OnPlayerBeforeSendLoot(Player* player, ObjectGuid lootGuid, Loot* loot)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_BEFORE_SEND_LOOT, script->OnPlayerBeforeSendLoot(player, lootGuid, loot));
++}
++
+ void ScriptMgr::OnPlayerGiveXP(Player* player, uint32& amount, Unit* victim, uint8 xpSource)
+ {
+     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_GIVE_EXP, script->OnPlayerGiveXP(player, amount, victim, xpSource));
+diff --git a/src/server/game/Scripting/ScriptDefines/PlayerScript.h b/src/server/game/Scripting/ScriptDefines/PlayerScript.h
+index 8d1c9dd2e..b9f4bc733 100644
+--- a/src/server/game/Scripting/ScriptDefines/PlayerScript.h
++++ b/src/server/game/Scripting/ScriptDefines/PlayerScript.h
+@@ -50,6 +50,7 @@ enum PlayerHook
+     PLAYERHOOK_ON_AFTER_UPDATE,
+     PLAYERHOOK_ON_MONEY_CHANGED,
+     PLAYERHOOK_ON_BEFORE_LOOT_MONEY,
++    PLAYERHOOK_ON_BEFORE_SEND_LOOT,
+     PLAYERHOOK_ON_GIVE_EXP,
+     PLAYERHOOK_ON_REPUTATION_CHANGE,
+     PLAYERHOOK_ON_REPUTATION_RANK_CHANGE,
+@@ -286,6 +287,9 @@ public:
+     // Called before looted money is added to a player
+     virtual void OnPlayerBeforeLootMoney(Player* /*player*/, Loot* /*loot*/) {}
+ 
++    // Called before loot is sent to a player
++    virtual void OnPlayerBeforeSendLoot(Player* /*player*/, ObjectGuid /*lootGuid*/, Loot* /*loot*/) { }
++
+     // Called when a player gains XP (before anything is given)
+     virtual void OnPlayerGiveXP(Player* /*player*/, uint32& /*amount*/, Unit* /*victim*/, uint8 /*xpSource*/) { }
+ 
+diff --git a/src/server/game/Scripting/ScriptMgr.h b/src/server/game/Scripting/ScriptMgr.h
+index d66145b10..64719027b 100644
+--- a/src/server/game/Scripting/ScriptMgr.h
++++ b/src/server/game/Scripting/ScriptMgr.h
+@@ -333,6 +333,7 @@ public: /* PlayerScript */
+     void OnPlayerAfterSpecSlotChanged(Player* player, uint8 newSlot);
+     void OnPlayerMoneyChanged(Player* player, int32& amount);
+     void OnPlayerBeforeLootMoney(Player* player, Loot* loot);
++    void OnPlayerBeforeSendLoot(Player* player, ObjectGuid lootGuid, Loot* loot);
+     void OnPlayerGiveXP(Player* player, uint32& amount, Unit* victim, uint8 xpSource);
+     bool OnPlayerReputationChange(Player* player, uint32 factionID, int32& standing, bool incremental);
+     void OnPlayerReputationRankChange(Player* player, uint32 factionID, ReputationRank newRank, ReputationRank oldRank, bool increased);
