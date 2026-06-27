@@ -97,7 +97,7 @@ public:
         }
 
         // in inventory bags
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
+        auto destroyBagItems = [&](uint8 i)
         {
             if (Bag* bag = player->GetBagByPos(i))
             {
@@ -116,7 +116,13 @@ public:
                     }
                 }
             }
-        }
+        };
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
+            destroyBagItems(i);
+
+        for (uint8 i = ENHANCED_BAG_SLOT_START; i < ENHANCED_BAG_SLOT_END; i++)
+            destroyBagItems(i);
 
         std::ostringstream str;
         str << "Removed ";

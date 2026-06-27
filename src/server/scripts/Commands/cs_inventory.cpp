@@ -118,7 +118,7 @@ public:
         }
 
         // Check bags
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
+        auto checkBagSlot = [&](uint8 i)
         {
             if (Bag* bag = target->GetBagByPos(i))
             {
@@ -135,7 +135,13 @@ public:
             {
                 ++freeSlotsForBags;
             }
-        }
+        };
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
+            checkBagSlot(i);
+
+        for (uint8 i = ENHANCED_BAG_SLOT_START; i < ENHANCED_BAG_SLOT_END; i++)
+            checkBagSlot(i);
 
         std::ostringstream str;
 

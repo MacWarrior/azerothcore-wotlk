@@ -103,6 +103,19 @@
 //  see: https://github.com/azerothcore/azerothcore-wotlk/issues/9766
 #include "GridNotifiersImpl.h"
 
+namespace
+{
+template <typename Callable>
+void ForEachInventoryBagSlot(Callable&& callable)
+{
+    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+        callable(slot);
+
+    for (uint8 slot = ENHANCED_BAG_SLOT_START; slot < ENHANCED_BAG_SLOT_END; ++slot)
+        callable(slot);
+}
+}
+
 enum CharacterFlags
 {
     CHARACTER_FLAG_NONE                 = 0x00000000,
@@ -3849,6 +3862,14 @@ void Player::BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target)
 
             m_items[i]->BuildCreateUpdateBlockForPlayer(data, target);
         }
+
+        ForEachInventoryBagSlot([&](uint8 i)
+        {
+            if (i < INVENTORY_SLOT_BAG_END || !m_items[i])
+                return;
+
+            m_items[i]->BuildCreateUpdateBlockForPlayer(data, target);
+        });
     }
 
     Unit::BuildCreateUpdateBlockForPlayer(data, target);
@@ -3882,6 +3903,14 @@ void Player::DestroyForPlayer(Player* target, bool onDeath) const
 
             m_items[i]->DestroyForPlayer(target);
         }
+
+        ForEachInventoryBagSlot([&](uint8 i)
+        {
+            if (i < INVENTORY_SLOT_BAG_END || !m_items[i])
+                return;
+
+            m_items[i]->DestroyForPlayer(target);
+        });
     }
 }
 
@@ -4656,11 +4685,13 @@ void Player::DurabilityLossAll(double percent, bool inventory)
         // keys not have durability
         //for (int i = KEYRING_SLOT_START; i < KEYRING_SLOT_END; i++)
 
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
+        ForEachInventoryBagSlot([&](uint8 i)
+        {
             if (Bag* pBag = GetBagByPos(i))
                 for (uint32 j = 0; j < pBag->GetBagSize(); j++)
                     if (Item* pItem = GetItemByPos(i, j))
                         DurabilityLoss(pItem, percent);
+        });
     }
 }
 
@@ -4700,11 +4731,13 @@ void Player::DurabilityPointsLossAll(int32 points, bool inventory)
         // keys not have durability
         //for (int i = KEYRING_SLOT_START; i < KEYRING_SLOT_END; i++)
 
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; i++)
-            if (Bag* pBag = (Bag*)GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+        ForEachInventoryBagSlot([&](uint8 i)
+        {
+            if (Bag* pBag = GetBagByPos(i))
                 for (uint32 j = 0; j < pBag->GetBagSize(); j++)
                     if (Item* pItem = GetItemByPos(i, j))
                         DurabilityPointsLoss(pItem, points);
+        });
     }
 }
 
@@ -4754,9 +4787,11 @@ uint32 Player::DurabilityRepairAll(bool cost, float discountMod, bool guildBank)
     // bank, buyback and keys not repaired
 
     // items in inventory bags
-    for (uint8 j = INVENTORY_SLOT_BAG_START; j < INVENTORY_SLOT_BAG_END; j++)
+    ForEachInventoryBagSlot([&](uint8 j)
+    {
         for (uint8 i = 0; i < MAX_BAG_SIZE; i++)
             TotalCost += DurabilityRepair(((j << 8) | i), cost, discountMod, guildBank);
+    });
     return TotalCost;
 }
 
@@ -6590,7 +6625,7 @@ void Player::DuelComplete(DuelCompleteType type)
 
 void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
 {
-    if (slot >= INVENTORY_SLOT_BAG_END || !item)
+    if ((!IsInventoryBagSlot(slot) && slot >= INVENTORY_SLOT_BAG_END) || !item)
         return;
 
     ItemTemplate const* proto = item->GetTemplate();
@@ -6627,7 +6662,7 @@ void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
 
 void Player::_ApplyItemBonuses(ItemTemplate const* proto, uint8 slot, bool apply, bool only_level_scale /*= false*/)
 {
-    if (slot >= INVENTORY_SLOT_BAG_END || !proto)
+    if ((!IsInventoryBagSlot(slot) && slot >= INVENTORY_SLOT_BAG_END) || !proto)
         return;
 
     ScalingStatDistributionEntry const* ssd = proto->ScalingStatDistribution ? sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution) : nullptr;
@@ -7026,16 +7061,16 @@ void Player::CastAllObtainSpells()
         if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
             ApplyItemObtainSpells(item, true);
 
-    for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+    ForEachInventoryBagSlot([&](uint8 i)
     {
         Bag* bag = GetBagByPos(i);
         if (!bag)
-            continue;
+            return;
 
         for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
             if (Item* item = bag->GetItemByPos(slot))
                 ApplyItemObtainSpells(item, true);
-    }
+    });
 }
 
 void Player::ApplyItemObtainSpells(Item* item, bool apply)
@@ -7064,7 +7099,7 @@ void Player::UpdateItemObtainSpells(Item* item, uint8 bag, uint8 slot)
 {
     if (IsBankPos(bag, slot))
         ApplyItemObtainSpells(item, false);
-    else if (bag == INVENTORY_SLOT_BAG_0 || (bag >= INVENTORY_SLOT_BAG_START && bag < INVENTORY_SLOT_BAG_END))
+    else if (bag == INVENTORY_SLOT_BAG_0 || IsInventoryBagSlot(bag))
         ApplyItemObtainSpells(item, true);
 }
 
@@ -7572,8 +7607,11 @@ void Player::_RemoveAllItemMods()
 {
     LOG_DEBUG("entities.player.items", "_RemoveAllItemMods start.");
 
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i])
         {
             ItemTemplate const* proto = m_items[i]->GetTemplate();
@@ -7592,8 +7630,11 @@ void Player::_RemoveAllItemMods()
         }
     }
 
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i])
         {
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
@@ -7617,8 +7658,11 @@ void Player::_ApplyAllItemMods()
 {
     LOG_DEBUG("entities.player.items", "_ApplyAllItemMods start.");
 
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i])
         {
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
@@ -7640,8 +7684,11 @@ void Player::_ApplyAllItemMods()
         }
     }
 
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i])
         {
             ItemTemplate const* proto = m_items[i]->GetTemplate();
@@ -7665,8 +7712,11 @@ void Player::_ApplyAllItemMods()
 
 void Player::_ApplyAllLevelScaleItemMods(bool apply)
 {
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i])
         {
             if (m_items[i]->IsBroken() || !CanUseAttackType(GetAttackBySlot(i)))
@@ -10720,7 +10770,7 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
     if (count < 1) count = 1;
 
     // cheating attempt
-    if (slot > MAX_BAG_SIZE && slot != NULL_SLOT)
+    if (slot > MAX_BAG_SIZE && slot != NULL_SLOT && !(bag == INVENTORY_SLOT_BAG_0 && IsInventoryBagSlot(slot)))
         return false;
 
     if (!IsAlive())

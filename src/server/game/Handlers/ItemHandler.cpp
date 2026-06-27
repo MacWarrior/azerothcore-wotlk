@@ -810,17 +810,28 @@ void WorldSession::HandleBuyItemInSlotOpcode(WorldPackets::Item::BuyItemInSlot& 
         bag = INVENTORY_SLOT_BAG_0;
     else
     {
-        for (int i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+        auto findBagSlot = [&](uint8 slot)
         {
-            if (Bag* pBag = _player->GetBagByPos(i))
+            if (Bag* pBag = _player->GetBagByPos(slot))
             {
                 if (packet.BagGuid == pBag->GetGUID())
                 {
-                    bag = i;
-                    break;
+                    bag = slot;
+                    return true;
                 }
             }
-        }
+
+            return false;
+        };
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+            if (findBagSlot(i))
+                break;
+
+        if (bag == NULL_BAG)
+            for (uint8 i = ENHANCED_BAG_SLOT_START; i < ENHANCED_BAG_SLOT_END; ++i)
+                if (findBagSlot(i))
+                    break;
     }
 
     // bag not found, cheating?

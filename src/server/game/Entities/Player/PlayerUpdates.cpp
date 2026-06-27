@@ -1356,8 +1356,11 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
 
 void Player::UpdateEquipSpellsAtFormChange()
 {
-    for (uint8 i = 0; i < INVENTORY_SLOT_BAG_END; ++i)
+    for (uint8 i = PLAYER_SLOT_START; i < PLAYER_SLOT_END; ++i)
     {
+        if (i >= INVENTORY_SLOT_BAG_END && !IsInventoryBagSlot(i))
+            continue;
+
         if (m_items[i] && !m_items[i]->IsBroken() &&
             CanUseAttackType(GetAttackBySlot(i)))
         {

@@ -5317,7 +5317,7 @@ void Spell::EffectDurabilityDamage(SpellEffIndex effIndex)
     }
 
     // invalid slot value
-    if (slot >= INVENTORY_SLOT_BAG_END)
+    if (slot >= PLAYER_SLOT_END || (slot >= INVENTORY_SLOT_BAG_END && !Player::IsInventoryBagSlot(uint8(slot))))
         return;
 
     if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
@@ -5352,7 +5352,7 @@ void Spell::EffectDurabilityDamagePCT(SpellEffIndex effIndex)
     }
 
     // invalid slot value
-    if (slot >= INVENTORY_SLOT_BAG_END)
+    if (slot >= PLAYER_SLOT_END || (slot >= INVENTORY_SLOT_BAG_END && !Player::IsInventoryBagSlot(uint8(slot))))
         return;
 
     if (damage <= 0)

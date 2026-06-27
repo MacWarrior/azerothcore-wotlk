@@ -649,7 +649,7 @@ enum PlayerSlots
     // first slot for item stored (in any way in player m_items data)
     PLAYER_SLOT_START           = 0,
     // last+1 slot for item stored (in any way in player m_items data)
-    PLAYER_SLOT_END             = 150,
+    PLAYER_SLOT_END             = 160,
     PLAYER_SLOTS_COUNT          = (PLAYER_SLOT_END - PLAYER_SLOT_START)
 };
 
@@ -721,6 +721,12 @@ enum CurrencyTokenSlots                                     // 32 slots
 {
     CURRENCYTOKEN_SLOT_START    = 118,
     CURRENCYTOKEN_SLOT_END      = 150
+};
+
+enum EnhancedBagSlots                                       // 10 slots
+{
+    ENHANCED_BAG_SLOT_START     = 150,
+    ENHANCED_BAG_SLOT_END       = 160
 };
 
 enum EquipmentSetUpdateState
@@ -1279,6 +1285,7 @@ public:
     static bool IsInventoryPos(uint8 bag, uint8 slot);
     static bool IsEquipmentPos(uint16 pos) { return IsEquipmentPos(pos >> 8, pos & 255); }
     static bool IsEquipmentPos(uint8 bag, uint8 slot);
+    static bool IsInventoryBagSlot(uint8 slot);
     static bool IsBagPos(uint16 pos);
     static bool IsBankPos(uint16 pos) { return IsBankPos(pos >> 8, pos & 255); }
     static bool IsBankPos(uint8 bag, uint8 slot);

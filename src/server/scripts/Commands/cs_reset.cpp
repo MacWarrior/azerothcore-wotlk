@@ -576,7 +576,7 @@ private:
         }
 
         // Bag slots
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+        auto deleteBagItems = [&](uint8 i)
         {
             Bag* pBag = (Bag*)playerTarget->GetItemByPos(INVENTORY_SLOT_BAG_0, i);
             if (pBag)
@@ -591,7 +591,13 @@ private:
                     }
                 }
             }
-        }
+        };
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+            deleteBagItems(i);
+
+        for (uint8 i = ENHANCED_BAG_SLOT_START; i < ENHANCED_BAG_SLOT_END; ++i)
+            deleteBagItems(i);
 
         return count;
     }
@@ -708,7 +714,7 @@ private:
 
         int16 count = 0;
         // Standard bag slots
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+        auto deleteBag = [&](uint8 i)
         {
             Bag* pBag = (Bag*)playerTarget->GetItemByPos(INVENTORY_SLOT_BAG_0, i);
             if (pBag)
@@ -716,7 +722,13 @@ private:
                 playerTarget->DestroyItem(INVENTORY_SLOT_BAG_0, i, true);
                 ++count;
             }
-        }
+        };
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+            deleteBag(i);
+
+        for (uint8 i = ENHANCED_BAG_SLOT_START; i < ENHANCED_BAG_SLOT_END; ++i)
+            deleteBag(i);
 
         return count;
     }
