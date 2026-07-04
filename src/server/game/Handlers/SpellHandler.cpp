@@ -563,40 +563,71 @@ void WorldSession::HandleCancelCastOpcode(WorldPacket& recvPacket)
         _player->InterruptNonMeleeSpells(false, spellId, false, true);
 }
 
+static bool IsTrackingAura(SpellInfo const* spellInfo)
+{
+    return spellInfo && spellInfo->GetSpellSpecific() == SPELL_SPECIFIC_TRACKER;
+}
+
+static void RemoveAllTrackingAuras(Player* player)
+{
+    if (!player)
+        return;
+
+    std::vector<uint32> trackingAuras;
+
+    Unit::AuraApplicationMap const& appliedAuras = player->GetAppliedAuras();
+
+    for (Unit::AuraApplicationMap::const_iterator itr = appliedAuras.begin(); itr != appliedAuras.end(); ++itr)
+    {
+        AuraApplication const* auraApp = itr->second;
+        if (!auraApp)
+            continue;
+
+        Aura const* aura = auraApp->GetBase();
+        if (!aura)
+            continue;
+
+        SpellInfo const* spellInfo = aura->GetSpellInfo();
+        if (!IsTrackingAura(spellInfo))
+            continue;
+
+        trackingAuras.push_back(spellInfo->Id);
+    }
+
+    for (uint32 spellId : trackingAuras)
+        player->RemoveAurasDueToSpell(spellId);
+}
+
 void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
 {
     uint32 spellId;
     recvPacket >> spellId;
 
+    if (!spellId)
+    {
+        if (sConfigMgr->GetOption<bool>("AllowMultipleTrackers", false))
+            GetPlayer()->RemoveAurasDueToSpell(spellId);
+
+        return;
+    }
+
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
         return;
 
-    // not allow remove spells with attr SPELL_ATTR0_NO_AURA_CANCEL
+    if (sConfigMgr->GetOption<bool>("AllowMultipleTrackers", false) && IsTrackingAura(spellInfo))
+    {
+        GetPlayer()->RemoveAurasDueToSpell(spellId);
+        return;
+    }
+
     if (spellInfo->HasAttribute(SPELL_ATTR0_NO_AURA_CANCEL))
-    {
         return;
-    }
 
-    // channeled spell case (it currently casted then)
-    if (spellInfo->IsChanneled())
-    {
-        if (Spell* curSpell = _player->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
-            if (curSpell->m_spellInfo->Id == spellId)
-                _player->InterruptSpell(CURRENT_CHANNELED_SPELL);
+    if (!GetPlayer()->IsAlive())
         return;
-    }
 
-    // non channeled case:
-    // don't allow remove non positive spells
-    // don't allow cancelling passive auras (some of them are visible)
-    if (!spellInfo->IsPositive() || spellInfo->IsPassive())
-    {
-        return;
-    }
-
-    // maybe should only remove one buff when there are multiple?
-    _player->RemoveOwnedAura(spellId, ObjectGuid::Empty, 0, AURA_REMOVE_BY_CANCEL);
+    GetPlayer()->RemoveAurasDueToSpell(spellId);
 }
 
 void WorldSession::HandlePetCancelAuraOpcode(WorldPacket& recvPacket)

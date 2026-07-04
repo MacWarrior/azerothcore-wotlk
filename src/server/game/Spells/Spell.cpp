@@ -5629,6 +5629,31 @@ void Spell::HandleEffects(Unit* pUnitTarget, Item* pItemTarget, GameObject* pGOT
 
 SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*param2*/)
 {
+     if (m_caster && m_caster->ToPlayer())
+    {
+        if (sConfigMgr->GetOption<bool>("AllowMultipleTrackers", false))
+        {
+            if (m_spellInfo->GetSpellSpecific() == SPELL_SPECIFIC_TRACKER)
+            {
+                for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                {
+                    if (m_spellInfo->Effects[i].Effect != SPELL_EFFECT_APPLY_AURA)
+                        continue;
+
+                    if (m_spellInfo->Effects[i].ApplyAuraName != SPELL_AURA_TRACK_RESOURCES &&
+                        m_spellInfo->Effects[i].ApplyAuraName != SPELL_AURA_TRACK_CREATURES)
+                        continue;
+
+                    if (m_caster->HasAura(m_spellInfo->Id))
+                    {
+                        m_caster->RemoveAurasDueToSpell(m_spellInfo->Id);
+                        return SPELL_FAILED_DONT_REPORT;
+                    }
+                }
+            }
+        }
+    }
+
     // check death state
     if (!m_caster->IsAlive() && !m_spellInfo->HasAttribute(SPELL_ATTR0_PASSIVE) && !(m_spellInfo->HasAttribute(SPELL_ATTR0_ALLOW_CAST_WHILE_DEAD) || (IsTriggered() && !m_triggeredByAuraSpell)))
         return SPELL_FAILED_CASTER_DEAD;
