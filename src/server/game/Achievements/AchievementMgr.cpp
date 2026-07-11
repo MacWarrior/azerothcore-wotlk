@@ -709,6 +709,9 @@ void AchievementMgr::SendAchievementEarned(AchievementEntry const* achievement) 
     if (GetPlayer()->GetSession()->PlayerLoading())
         return;
 
+    if( GetPlayer()->GetSession()->IsBot() )
+        return;
+
     // Don't send for achievements with ACHIEVEMENT_FLAG_TRACKING
     if (achievement->flags & ACHIEVEMENT_FLAG_HIDDEN)
         return;

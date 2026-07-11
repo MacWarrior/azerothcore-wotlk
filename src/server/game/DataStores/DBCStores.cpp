@@ -27,6 +27,7 @@
 #include "SpellMgr.h"
 #include "TransportMgr.h"
 #include "World.h"
+#include "RaceMgr.h"
 #include <map>
 
 typedef std::map<uint16, uint32> AreaFlagByAreaID;

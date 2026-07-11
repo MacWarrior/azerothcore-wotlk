@@ -58,6 +58,6 @@ void WhoListCacheMgr::Update()
         _whoListStorage.emplace_back(player->GetGUID(), player->GetTeamId(), player->GetSession()->GetSecurity(), player->GetLevel(),
             player->getClass(), player->getRace(),
             (player->IsSpectator() ? AREA_DALARAN : player->GetZoneId()), player->getGender(), player->IsVisible(),
-            widePlayerName, wideGuildName, playerName, guildName);
+            widePlayerName, wideGuildName, playerName, guildName, player->GetSession()->IsBot());
     }
 }
