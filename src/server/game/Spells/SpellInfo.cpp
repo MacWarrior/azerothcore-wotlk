@@ -1400,9 +1400,6 @@ bool SpellInfo::IsAuraExclusiveBySpecificWith(SpellInfo const* spellInfo) const
     switch (spellSpec1)
     {
         case SPELL_SPECIFIC_TRACKER:
-            if (sConfigMgr->GetOption<bool>("AllowMultipleTrackers", false))
-                return false;
-
         case SPELL_SPECIFIC_WARLOCK_ARMOR:
         case SPELL_SPECIFIC_MAGE_ARMOR:
         case SPELL_SPECIFIC_ELEMENTAL_SHIELD:
