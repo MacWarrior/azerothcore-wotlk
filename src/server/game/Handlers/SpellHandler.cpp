@@ -563,11 +563,6 @@ void WorldSession::HandleCancelCastOpcode(WorldPacket& recvPacket)
         _player->InterruptNonMeleeSpells(false, spellId, false, true);
 }
 
-static bool IsTrackingAura(SpellInfo const* spellInfo)
-{
-    return spellInfo && spellInfo->GetSpellSpecific() == SPELL_SPECIFIC_TRACKER;
-}
-
 void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
 {
     uint32 spellId;
@@ -599,9 +594,6 @@ void WorldSession::HandleCancelAuraOpcode(WorldPacket& recvPacket)
     {
         return;
     }
-
-    if (sConfigMgr->GetOption<bool>("AllowMultipleTrackers", false) && IsTrackingAura(spellInfo))
-        return;
 
     // maybe should only remove one buff when there are multiple?
     _player->RemoveOwnedAura(spellId, ObjectGuid::Empty, 0, AURA_REMOVE_BY_CANCEL);
