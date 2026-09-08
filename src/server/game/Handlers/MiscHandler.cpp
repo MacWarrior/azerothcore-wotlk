@@ -226,6 +226,7 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     uint32 levelMin, levelMax, racemask, classmask, zonesCount, strCount;
     std::array<uint32, 10> zoneids = {};                    // 10 is client limit
     std::string packetPlayerName, packetGuildName;
+    bool excludeBots = false;
 
     recvData >> levelMin;                                   // maximal player level, default 0
     recvData >> levelMax;                                   // minimal player level, default 100 (MAX_LEVEL)
@@ -262,6 +263,18 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
         std::string temp;
         recvData >> temp;                                   // user entered string, it used as universal search pattern(guild+player name)?
 
+        // GmFactory: custom /who filter "-bots"
+        if (temp == "-bots" || temp == "-BOTS" || temp == "-Bots")
+        {
+            excludeBots = true;
+
+            // Ne pas utiliser "-bots" comme critère de recherche standard
+            str[i].clear();
+
+            LOG_DEBUG("network.who", "Custom filter: exclude bots");
+            continue;
+        }
+
         if (!Utf8toWStr(temp, str[i]))
             continue;
 
@@ -293,6 +306,10 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
 
     for (auto const& target : sWhoListCacheMgr->GetWhoList())
     {
+        // GmFactory: exclude bots when "nobots" is present in the /who query
+        if (excludeBots && target.IsBot())
+            continue;
+
         if (target.GetTeamId() != team && !HasPermission(rbac::RBAC_PERM_TWO_SIDE_WHO_LIST))
             continue;
 
@@ -307,9 +324,12 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
             continue;
         }
 
-        if( target.IsBot() )
+        // GmFactory : Prefix bot names
+        std::string playerName = target.GetPlayerName();
+
+        if (target.IsBot())
         {
-            continue;
+            playerName = "[Bot] " + playerName;
         }
 
         // check if target's level is in level range
@@ -400,7 +420,7 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
             continue;
         }
 
-        data << target.GetPlayerName();                   // player name
+        data << playerName;                               // player name
         data << target.GetGuildName();                    // guild name
         data << uint32(lvl);                              // player level
         data << uint32(class_);                           // player class
