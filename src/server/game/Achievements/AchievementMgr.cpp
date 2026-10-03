@@ -709,7 +709,7 @@ void AchievementMgr::SendAchievementEarned(AchievementEntry const* achievement) 
     if (GetPlayer()->GetSession()->PlayerLoading())
         return;
 
-    if( GetPlayer()->GetSession()->IsBot() )
+    if( GetPlayer()->GetSession()->IsHeadless() )
         return;
 
     // Don't send for achievements with ACHIEVEMENT_FLAG_TRACKING
