@@ -533,7 +533,9 @@ namespace lfg
         /// Returns all random and seasonal dungeons for given level and expansion
         LfgDungeonSet GetRandomAndSeasonalDungeons(uint8 level, uint8 expansion);
         /// Teleport a player to/from selected dungeon
-        void TeleportPlayer(Player* player, bool out, WorldLocation const* teleportLocation = nullptr);
+        LfgTeleportError TeleportPlayer(Player* player, bool out,
+                                        WorldLocation const* teleportLocation = nullptr,
+                                        bool logResult = true);
         /// Inits new proposal to boot a player
         void InitBoot(ObjectGuid gguid, ObjectGuid kicker, ObjectGuid victim, std::string const& reason);
         /// Updates player boot proposal with new player answer
@@ -577,8 +579,11 @@ namespace lfg
         uint32 AddProposal(LfgProposal& proposal);
         /// Checks if all players are queued
         bool AllQueued(Lfg5Guids const& check);
+        /// Returns target size and role composition for selected dungeons/raids
+        LfgRoleRequirements GetLfgRoleRequirements(LfgDungeonSet const& dungeons);
         /// Checks if given roles match, modifies given roles map with new roles
-        static uint8 CheckGroupRoles(LfgRolesMap& groles);
+        static uint8 CheckGroupRoles(LfgRolesMap& groles, uint8 tanksNeeded = LFG_TANKS_NEEDED,
+            uint8 healersNeeded = LFG_HEALERS_NEEDED, uint8 dpsNeeded = LFG_DPS_NEEDED);
         /// Checks if given players are ignoring each other
         static bool HasIgnore(ObjectGuid guid1, ObjectGuid guid2);
         /// Sends queue status to player

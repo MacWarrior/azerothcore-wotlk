@@ -698,7 +698,11 @@ namespace lfg
             }
         }
 
-        if (!isRaid && joinData.result == LFG_JOIN_OK)
+        LfgRoleRequirements requirements = GetLfgRoleRequirements(dungeons);
+        if (joinData.result == LFG_JOIN_OK && !requirements.players)
+            joinData.result = LFG_JOIN_DUNGEON_INVALID;
+
+        if (joinData.result == LFG_JOIN_OK)
         {
             // Check player or group member restrictions
             if (!player->GetSession()->HasPermission(rbac::RBAC_PERM_JOIN_DUNGEON_FINDER))
@@ -719,7 +723,7 @@ namespace lfg
             }
             else if (grp)
             {
-                if (grp->GetMembersCount() > MAXGROUPSIZE)
+                if (grp->GetMembersCount() > requirements.players)
                     joinData.result = LFG_JOIN_TOO_MUCH_MEMBERS;
                 else
                 {
@@ -769,9 +773,6 @@ namespace lfg
             }
         }
 
-        if (isRaid)
-            players.insert(player->GetGUID());
-
         if (joinData.result == LFG_JOIN_OK)
         {
             // Expand random dungeons and check restrictions
@@ -789,7 +790,7 @@ namespace lfg
         }
 
         // pussywizard:
-        if (isRaid && grp && (grp->isLFGGroup() || guid != grp->GetLeaderGUID()))
+        if (grp && guid != grp->GetLeaderGUID())
             return;
 
          // Do not allow to change dungeon in the middle of a current dungeon
@@ -811,20 +812,6 @@ namespace lfg
         }
 
         SetComment(guid, comment);
-
-        if (isRaid)
-        {
-            if (grp)
-                roles = PLAYER_ROLE_LEADER;
-            else
-                roles &= (PLAYER_ROLE_TANK | PLAYER_ROLE_HEALER | PLAYER_ROLE_DAMAGE);
-            if (!roles)
-                return;
-            JoinRaidBrowser(player, roles, dungeons, comment);
-            SetState(guid, LFG_STATE_RAIDBROWSER);
-            SendRaidBrowserJoinedPacket(player, dungeons, comment);
-            return;
-        }
 
         if (grp)                                               // Begin rolecheck
         {
@@ -1511,7 +1498,9 @@ namespace lfg
 
             if (itRoles == roleCheck.roles.end())
             {
-                roleCheck.state = CheckGroupRoles(roleCheck.roles) ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
+                LfgRoleRequirements requirements = GetLfgRoleRequirements(roleCheck.dungeons);
+                roleCheck.state = requirements.players && CheckGroupRoles(roleCheck.roles, requirements.tanks, requirements.healers, requirements.dps)
+                    ? LFG_ROLECHECK_FINISHED : LFG_ROLECHECK_WRONG_ROLES;
             }
         }
 
@@ -1600,7 +1589,7 @@ namespace lfg
             lockMap.clear();
     }
 
-    uint8 LFGMgr::CheckGroupRoles(LfgRolesMap& groles)
+    uint8 LFGMgr::CheckGroupRoles(LfgRolesMap& groles, uint8 tanksNeeded, uint8 healersNeeded, uint8 dpsNeeded)
     {
         if (groles.empty())
             return 0;
@@ -1620,11 +1609,11 @@ namespace lfg
                 if (role != PLAYER_ROLE_DAMAGE)
                 {
                     it->second -= PLAYER_ROLE_DAMAGE;
-                    if (uint8 x = CheckGroupRoles(groles))
+                    if (uint8 x = CheckGroupRoles(groles, tanksNeeded, healersNeeded, dpsNeeded))
                         return x;
                     it->second += PLAYER_ROLE_DAMAGE;
                 }
-                else if (damage == LFG_DPS_NEEDED)
+                else if (damage == dpsNeeded)
                     return 0;
                 else
                     damage++;
@@ -1635,11 +1624,11 @@ namespace lfg
                 if (role != PLAYER_ROLE_HEALER)
                 {
                     it->second -= PLAYER_ROLE_HEALER;
-                    if (uint8 x = CheckGroupRoles(groles))
+                    if (uint8 x = CheckGroupRoles(groles, tanksNeeded, healersNeeded, dpsNeeded))
                         return x;
                     it->second += PLAYER_ROLE_HEALER;
                 }
-                else if (healer == LFG_HEALERS_NEEDED)
+                else if (healer == healersNeeded)
                     return 0;
                 else
                     healer++;
@@ -1650,11 +1639,11 @@ namespace lfg
                 if (role != PLAYER_ROLE_TANK)
                 {
                     it->second -= PLAYER_ROLE_TANK;
-                    if (uint8 x = CheckGroupRoles(groles))
+                    if (uint8 x = CheckGroupRoles(groles, tanksNeeded, healersNeeded, dpsNeeded))
                         return x;
                     it->second += PLAYER_ROLE_TANK;
                 }
-                else if (tank == LFG_TANKS_NEEDED)
+                else if (tank == tanksNeeded)
                     return 0;
                 else
                     tank++;
@@ -1688,9 +1677,9 @@ namespace lfg
             if (guid == proposal.leader)
                 continue;
 
-            if (player.role & lfg::PLAYER_ROLE_TANK)
+            if (player.role & PLAYER_ROLE_TANK)
                 tanks.push_back(guid);
-            else if (player.role & lfg::PLAYER_ROLE_HEALER)
+            else if (player.role & PLAYER_ROLE_HEALER)
                 healers.push_back(guid);
             else
                 dps.push_back(guid);
@@ -1703,6 +1692,7 @@ namespace lfg
         // Set the dungeon difficulty
         LFGDungeonData const* dungeon = GetLFGDungeon(proposal.dungeonId);
         ASSERT(dungeon);
+        bool const isRaid = dungeon->type == LFG_TYPE_RAID;
 
         bool isPremadeGroup = false;
         Group* grp = proposal.group ? sGroupMgr->GetGroupByGUID(proposal.group.GetCounter()) : nullptr;
@@ -1726,6 +1716,9 @@ namespace lfg
             }
         }
 
+        if (grp && isRaid && !grp->isRaidGroup())
+            grp->ConvertToRaid();
+
         ObjectGuid oldGroupGUID;
         bool hasRandomLfgMember = proposal.group.IsEmpty();
         for (LfgGuidList::const_iterator it = players.begin(); it != players.end(); ++it)
@@ -1741,6 +1734,8 @@ namespace lfg
                 oldGroupGUID = group->GetGUID();
                 grp = group;
                 grp->ConvertToLFG(false);
+                if (isRaid && !grp->isRaidGroup())
+                    grp->ConvertToRaid();
                 SetState(grp->GetGUID(), LFG_STATE_PROPOSAL);
             }
 
@@ -1777,6 +1772,8 @@ namespace lfg
                 grp = new Group();
                 grp->ConvertToLFG();
                 grp->Create(player);
+                if (isRaid)
+                    grp->ConvertToRaid();
                 ObjectGuid gguid = grp->GetGUID();
                 SetState(gguid, LFG_STATE_PROPOSAL);
                 sGroupMgr->AddGroup(grp);
@@ -1797,12 +1794,146 @@ namespace lfg
         if (!grp)
             return;
 
-        grp->SetDungeonDifficulty(Difficulty(dungeon->difficulty));
+        if (isRaid)
+        {
+            std::vector<ObjectGuid> raidTanks;
+            std::vector<ObjectGuid> raidHealers;
+            std::vector<ObjectGuid> raidDps;
+
+            for (auto const& [guid, proposalPlayer] : proposal.players)
+            {
+                uint8 role = proposalPlayer.role & ~PLAYER_ROLE_LEADER;
+                if (role & PLAYER_ROLE_TANK)
+                    raidTanks.push_back(guid);
+                else if (role & PLAYER_ROLE_HEALER)
+                    raidHealers.push_back(guid);
+                else if (role & PLAYER_ROLE_DAMAGE)
+                    raidDps.push_back(guid);
+            }
+
+            LfgDungeonSet selectedDungeon;
+            selectedDungeon.insert(proposal.dungeonId);
+            LfgRoleRequirements requirements = GetLfgRoleRequirements(selectedDungeon);
+            uint8 const subGroups = requirements.players / MAXGROUPSIZE;
+
+            if (raidTanks.size() == requirements.tanks && raidHealers.size() == requirements.healers && raidDps.size() == requirements.dps)
+            {
+                for (uint8 subGroup = 0; subGroup < subGroups; ++subGroup)
+                {
+                    grp->ChangeMembersGroup(raidTanks[subGroup], subGroup);
+                    grp->ChangeMembersGroup(raidHealers[subGroup], subGroup);
+                    grp->ChangeMembersGroup(raidDps[subGroup * 3], subGroup);
+                    grp->ChangeMembersGroup(raidDps[subGroup * 3 + 1], subGroup);
+                    grp->ChangeMembersGroup(raidDps[subGroup * 3 + 2], subGroup);
+                }
+            }
+
+            if (requirements.players && grp->GetMembersCount() != requirements.players)
+            {
+                LOG_ERROR("lfg",
+                          "LFG raid proposal built an incomplete group: expected {} members, group has {}",
+                          requirements.players, grp->GetMembersCount());
+            }
+        }
+
+        if (isRaid)
+        {
+            Difficulty const raidDifficulty = Difficulty(dungeon->difficulty);
+
+            grp->SetRaidDifficulty(raidDifficulty);
+
+            uint32 clearedRaidBinds = 0;
+            for (GroupReference* itr = grp->GetFirstMember(); itr != nullptr; itr = itr->next())
+            {
+                Player* member = itr->GetSource();
+                if (!member)
+                    continue;
+
+                if (InstancePlayerBind* bind = sInstanceSaveMgr->PlayerGetBoundInstance(
+                        member->GetGUID(), dungeon->map, raidDifficulty))
+                {
+                    Difficulty const boundDifficulty = bind->save->GetDifficulty();
+                    sInstanceSaveMgr->PlayerUnbindInstance(
+                        member->GetGUID(), dungeon->map, boundDifficulty, true, member);
+                    ++clearedRaidBinds;
+                }
+            }
+
+            LOG_DEBUG("lfg",
+                      "LFG raid instance reset: dungeon={} map={} difficulty={} members={} clearedBinds={}",
+                      proposal.dungeonId, dungeon->map, uint32(raidDifficulty),
+                      grp->GetMembersCount(), clearedRaidBinds);
+
+            // LFR launch normalization.
+            //
+            // The original TeleportPlayer() intentionally rejects players that
+            // are falling/jumping or in combat. For manually queued players
+            // this is reasonable, but for an automatically assembled LFR raid
+            // it can leave part of the raid outside the instance even though
+            // the proposal is complete.
+            //
+            // Normalize the final raid roster once, before the original
+           // teleport path runs. No teleport retry is introduced here.
+            uint32 combatCleared = 0;
+            uint32 fallingCleared = 0;
+            uint32 jumpingCleared = 0;
+
+            for (GroupReference* itr = grp->GetFirstMember(); itr != nullptr; itr = itr->next())
+            {
+                Player* member = itr->GetSource();
+                if (!member)
+                    continue;
+
+                if (member->IsInCombat())
+                {
+                    member->CombatStop(true);
+                    ++combatCleared;
+                }
+
+                if (!member->IsStopped())
+                    member->StopMoving();
+
+                if (member->HasUnitState(UNIT_STATE_JUMPING))
+                {
+                    member->ClearUnitState(UNIT_STATE_JUMPING);
+                    ++jumpingCleared;
+                }
+
+                if (member->HasUnitMovementFlag(
+                        MovementFlags(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR)))
+                {
+                    member->RemoveUnitMovementFlag(
+                        MovementFlags(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR));
+                    member->m_movementInfo.RemoveMovementFlag(
+                        MovementFlags(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR));
+                    member->SetFallInformation(0, member->GetPositionZ());
+                    ++fallingCleared;
+                }
+            }
+
+            LOG_DEBUG("lfg",
+                      "LFG raid launch normalized: dungeon={} members={} combatCleared={} fallingCleared={} jumpingCleared={}",
+                      proposal.dungeonId, grp->GetMembersCount(),
+                      combatCleared, fallingCleared, jumpingCleared);
+        }
+        else
+        {
+            grp->SetDungeonDifficulty(Difficulty(dungeon->difficulty));
+        }
+
         ObjectGuid gguid = grp->GetGUID();
         SetDungeon(gguid, dungeon->Entry());
         SetState(gguid, LFG_STATE_DUNGEON);
 
         _SaveToDB(gguid);
+
+        if (isRaid)
+        {
+            LOG_DEBUG("lfg",
+                      "LFG raid teleport setup: dungeon={} map={} proposalPlayers={} raidMembers={} teleportCandidates={} x={} y={} z={} o={}",
+                      proposal.dungeonId, dungeon->map, proposal.players.size(), grp->GetMembersCount(),
+                      playersToTeleport.size(), dungeon->x, dungeon->y, dungeon->z, dungeon->o);
+        }
 
         // Select a player inside to be teleported to
         WorldLocation const* teleportLocation = nullptr;
@@ -1839,13 +1970,19 @@ namespace lfg
 
         bool randomDungeon = false;
         std::vector<Player*> playersTeleported;
+        uint32 teleportSkippedNotFound = 0;
+        uint32 teleportSkippedWrongGroup = 0;
+        uint32 teleportSkippedSameInstance = 0;
         // Teleport Player
         for (GuidUnorderedSet::const_iterator it = playersToTeleport.begin(); it != playersToTeleport.end(); ++it)
         {
             if (Player* player = ObjectAccessor::FindPlayer(*it))
             {
                 if (player->GetGroup() != grp) // pussywizard: could not add because group was full
+                {
+                    ++teleportSkippedWrongGroup;
                     continue;
+                }
 
                 // Add the cooldown spell if queued for a random dungeon
                 // xinef: add aura
@@ -1869,6 +2006,7 @@ namespace lfg
                             if (player->GetInstanceId() == ilb->save->GetInstanceId())
                             {
                                 // Do not teleport if in the same map and instance as leader
+                                ++teleportSkippedSameInstance;
                                 continue;
                             }
                         }
@@ -1886,11 +2024,75 @@ namespace lfg
 
                 playersTeleported.push_back(player);
             }
+            else
+                ++teleportSkippedNotFound;
         }
+
+        if (isRaid)
+        {
+            LOG_DEBUG("lfg",
+                      "LFG raid teleport selection: candidates={} selected={} notFound={} wrongGroup={} sameInstance={}",
+                      playersToTeleport.size(), playersTeleported.size(), teleportSkippedNotFound,
+                      teleportSkippedWrongGroup, teleportSkippedSameInstance);
+        }
+
+        uint32 teleportOk = 0;
+        uint32 teleportFailed = 0;
+        std::map<LfgTeleportError, uint32> teleportErrors;
 
         for (Player* player : playersTeleported)
         {
-            TeleportPlayer(player, false, teleportLocation);
+            LfgTeleportError const result =
+                TeleportPlayer(player, false, teleportLocation, !isRaid);
+
+            if (result == LFG_TELEPORTERROR_OK)
+                ++teleportOk;
+            else
+            {
+                ++teleportFailed;
+                ++teleportErrors[result];
+            }
+        }
+
+        if (isRaid)
+        {
+            LOG_DEBUG("lfg",
+                      "LFG raid teleport result: dungeon={} map={} proposalPlayers={} raidMembers={} candidates={} selected={} ok={} failed={}",
+                      proposal.dungeonId, dungeon->map, proposal.players.size(), grp->GetMembersCount(),
+                      playersToTeleport.size(), playersTeleported.size(), teleportOk, teleportFailed);
+
+            if (teleportFailed)
+            {
+                std::string errors;
+                for (auto const& [error, count] : teleportErrors)
+                {
+                    if (!errors.empty())
+                        errors += ", ";
+                    errors += std::to_string(uint32(error));
+                    errors += "=";
+                    errors += std::to_string(count);
+                }
+
+                LOG_ERROR("lfg",
+                          "LFG raid teleport failed for {}/{} selected members: dungeon={} map={} difficulty={} errors=[{}]",
+                          teleportFailed, playersTeleported.size(), proposal.dungeonId,
+                          dungeon->map, uint32(dungeon->difficulty), errors);
+            }
+        }
+
+        if (isRaid && !playersToTeleport.empty() && playersTeleported.empty())
+        {
+            LOG_ERROR("lfg",
+                      "LFG raid teleport selected no players: dungeon={} map={} proposalPlayers={} raidMembers={} candidates={} notFound={} wrongGroup={} sameInstance={}",
+                      proposal.dungeonId, dungeon->map, proposal.players.size(), grp->GetMembersCount(),
+                      playersToTeleport.size(), teleportSkippedNotFound,
+                      teleportSkippedWrongGroup, teleportSkippedSameInstance);
+        }
+        else if (isRaid)
+        {
+            LOG_DEBUG("lfg",
+                      "LFG raid teleport dispatched through original AzerothCore path: dungeon={} selected={}/{}",
+                      proposal.dungeonId, playersTeleported.size(), playersToTeleport.size());
         }
 
         if (randomDungeon)
@@ -2006,7 +2208,7 @@ namespace lfg
         }
 
         // Remove players/groups from Queue
-        for (uint8 i = 0; i < 5 && proposal.queues.guids[i]; ++i)
+        for (uint8 i = 0; i < proposal.queues.size(); ++i)
             queue.RemoveQueueData(proposal.queues.guids[i]);
 
         MakeNewGroup(proposal);
@@ -2109,7 +2311,7 @@ namespace lfg
         }
 
         // Readd to queue
-        for (uint8 i = 0; i < 5 && proposal.queues.guids[i]; ++i)
+        for (uint8 i = 0; i < proposal.queues.size(); ++i)
         {
             // xinef: this will work as data is not deleted, only references to this data are cleared
             // xinef: when new proposal is created
@@ -2225,10 +2427,13 @@ namespace lfg
        @param[in]     out Teleport out (true) or in (false)
        @param[in]     fromOpcode Function called from opcode handlers? (Default false)
     */
-    void LFGMgr::TeleportPlayer(Player* player, bool out, WorldLocation const* teleportLocation /*= nullptr*/)
+    LfgTeleportError LFGMgr::TeleportPlayer(Player* player, bool out,
+                                            WorldLocation const* teleportLocation /*= nullptr*/,
+                                            bool logResult /*= true*/)
     {
         LFGDungeonData const* dungeon = nullptr;
         Group* group = player->GetGroup();
+        bool const isLfgRaid = group && group->isLFGGroup() && group->isRaidGroup();
 
         if (group && group->isLFGGroup())
             dungeon = GetLFGDungeon(GetDungeon(group->GetGUID()));
@@ -2236,7 +2441,7 @@ namespace lfg
         if (!dungeon)
         {
             player->GetSession()->SendLfgTeleportError(uint8(LFG_TELEPORTERROR_INVALID_LOCATION));
-            return;
+            return LFG_TELEPORTERROR_INVALID_LOCATION;
         }
 
         LfgTeleportError error = LFG_TELEPORTERROR_OK;
@@ -2245,7 +2450,7 @@ namespace lfg
         {
             error = LFG_TELEPORTERROR_PLAYER_DEAD;
         }
-        else if (player->IsFalling() || player->HasUnitState(UNIT_STATE_JUMPING))
+        else if (!isLfgRaid && (player->IsFalling() || player->HasUnitState(UNIT_STATE_JUMPING)))
         {
             error = LFG_TELEPORTERROR_FALLING;
         }
@@ -2259,7 +2464,7 @@ namespace lfg
         }
         // GetCharm() validates the charmed unit still exists and clears a stale reference,
         // unlike GetCharmGUID(); a despawned vehicle must not permanently block the teleport.
-        else if (player->GetCharm() || player->IsInCombat())
+        else if (!isLfgRaid && (player->GetCharm() || player->IsInCombat()))
         {
             error = LFG_TELEPORTERROR_COMBAT;
         }
@@ -2268,10 +2473,35 @@ namespace lfg
             if (player->GetMapId() == uint32(dungeon->map))
                 player->TeleportToEntryPoint();
 
-            return;
+            return LFG_TELEPORTERROR_OK;
         }
         else
         {
+            // A completed LFG/LFR raid is already an accepted activity.
+            // Falling/jumping/combat are transient world states and must not
+            // leave part of a 10/20/25/40-player raid outside the instance.
+            // Normalize them immediately before the original TeleportTo path.
+            if (isLfgRaid)
+            {
+                if (player->IsInCombat())
+                    player->CombatStop(true);
+
+                if (!player->IsStopped())
+                    player->StopMoving();
+
+                player->ClearUnitState(UNIT_STATE_JUMPING);
+                player->RemoveUnitMovementFlag(
+                    MovementFlags(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR));
+                player->m_movementInfo.RemoveMovementFlag(
+                    MovementFlags(MOVEMENTFLAG_FALLING | MOVEMENTFLAG_FALLING_FAR));
+
+                // Player::IsFalling() uses m_lastFallZ rather than movement
+                // flags, so synchronize the player fall baseline at the last
+                // possible moment before TeleportTo().
+                player->SetFallInformation(
+                    GameTime::GetGameTime().count(), player->GetPositionZ());
+            }
+
             uint32 mapid = dungeon->map;
             float x = dungeon->x;
             float y = dungeon->y;
@@ -2298,15 +2528,19 @@ namespace lfg
         {
             player->GetSession()->SendLfgTeleportError(uint8(error));
 
-            LOG_DEBUG("lfg", "Player [{}] could NOT be teleported in to map [{}] (x: {}, y: {}, z: {}) Error: {}",
-            player->GetName(), dungeon->map, dungeon->x, dungeon->y, dungeon->z, error);
+            if (logResult)
+            {
+                LOG_DEBUG("lfg", "Player [{}] could NOT be teleported in to map [{}] (x: {}, y: {}, z: {}) Error: {}",
+                          player->GetName(), dungeon->map, dungeon->x, dungeon->y, dungeon->z, error);
+            }
         }
-        else
+        else if (logResult)
         {
             LOG_DEBUG("lfg", "Player [{}] is being teleported in to map [{}] (x: {}, y: {}, z: {})",
-            player->GetName(), dungeon->map, dungeon->x, dungeon->y, dungeon->z);
+                      player->GetName(), dungeon->map, dungeon->x, dungeon->y, dungeon->z);
         }
 
+        return error;
     }
 
     /**
@@ -2474,6 +2708,77 @@ namespace lfg
             return LFG_TYPE_NONE;
 
         return LfgType(dungeon->type);
+    }
+
+    LfgRoleRequirements LFGMgr::GetLfgRoleRequirements(LfgDungeonSet const& dungeons)
+    {
+        LfgRoleRequirements result;
+        uint8 targetSize = 0;
+
+        for (uint32 dungeonId : dungeons)
+        {
+            LFGDungeonData const* dungeon = GetLFGDungeon(dungeonId & 0x00FFFFFF);
+            if (!dungeon)
+                return {};
+
+            uint8 size = MAXGROUPSIZE;
+            if (dungeon->type == LFG_TYPE_RAID)
+            {
+                switch (dungeon->map)
+                {
+                    // Classic
+                    case 229: size = 10; break; // Upper Blackrock Spire
+                    case 309: size = 20; break; // Zul'Gurub
+                    case 409: size = 40; break; // Molten Core
+                    case 469: size = 40; break; // Blackwing Lair
+                    case 509: size = 20; break; // Ruins of Ahn'Qiraj
+                    case 531: size = 40; break; // Temple of Ahn'Qiraj
+
+                    // The Burning Crusade
+                    case 532: size = 10; break; // Karazhan
+                    case 534: size = 25; break; // Hyjal Summit
+                    case 544: size = 25; break; // Magtheridon's Lair
+                    case 548: size = 25; break; // Serpentshrine Cavern
+                    case 550: size = 25; break; // Tempest Keep
+                    case 564: size = 25; break; // Black Temple
+                    case 565: size = 25; break; // Gruul's Lair
+                    case 568: size = 10; break; // Zul'Aman
+                    case 580: size = 25; break; // Sunwell Plateau
+
+                    // WotLK and any other raid using standard raid difficulties
+                    default:
+                        switch (dungeon->difficulty)
+                        {
+                            case RAID_DIFFICULTY_10MAN_NORMAL:
+                            case RAID_DIFFICULTY_10MAN_HEROIC:
+                                size = 10;
+                                break;
+                            case RAID_DIFFICULTY_25MAN_NORMAL:
+                            case RAID_DIFFICULTY_25MAN_HEROIC:
+                                size = 25;
+                                break;
+                            default:
+                                return {};
+                        }
+                        break;
+                }
+            }
+
+            if (!targetSize)
+                targetSize = size;
+            else if (targetSize != size)
+                return {};
+        }
+
+        if (!targetSize || targetSize % MAXGROUPSIZE)
+            return {};
+
+        uint8 const subGroups = targetSize / MAXGROUPSIZE;
+        result.players = targetSize;
+        result.tanks = subGroups;
+        result.healers = subGroups;
+        result.dps = subGroups * 3;
+        return result;
     }
 
     LfgState LFGMgr::GetState(ObjectGuid guid)
@@ -2838,7 +3143,7 @@ namespace lfg
         if (check.empty())
             return false;
 
-        for (uint8 i = 0; i < 5 && check.guids[i]; ++i)
+        for (uint8 i = 0; i < check.size(); ++i)
         {
             ObjectGuid guid = check.guids[i];
             if (GetState(guid) != LFG_STATE_QUEUED)

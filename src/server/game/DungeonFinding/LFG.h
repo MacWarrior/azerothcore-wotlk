@@ -108,6 +108,8 @@ namespace lfg
         RANDOM_DUNGEON_HEROIC_WOTLK                  = 262
     };
 
+    static constexpr uint8 LFG_MAX_QUEUE_ENTRIES = 40;
+
     class Lfg5Guids;
 
     typedef std::list<Lfg5Guids> Lfg5GuidsList;
@@ -119,10 +121,18 @@ namespace lfg
     typedef std::map<ObjectGuid, uint8> LfgRolesMap;
     typedef std::map<ObjectGuid, ObjectGuid> LfgGroupsMap;
 
+    struct LfgRoleRequirements
+    {
+        uint8 players{0};
+        uint8 tanks{0};
+        uint8 healers{0};
+        uint8 dps{0};
+    };
+
     class Lfg5Guids
     {
     public:
-        std::array<ObjectGuid, 5> guids = { };
+        std::array<ObjectGuid, LFG_MAX_QUEUE_ENTRIES> guids = { };
         LfgRolesMap* roles;
         Lfg5Guids()
         {
@@ -150,333 +160,91 @@ namespace lfg
         }
 
         ~Lfg5Guids() { delete roles; }
-        void addRoles(LfgRolesMap const& r) { roles = new LfgRolesMap(r); }
+        void addRoles(LfgRolesMap const& r)
+        {
+            delete roles;
+            roles = new LfgRolesMap(r);
+        }
         void clear() { guids.fill(ObjectGuid::Empty); }
         [[nodiscard]] bool empty() const { return guids[0] == ObjectGuid::Empty; }
         [[nodiscard]] ObjectGuid front() const { return guids[0]; }
 
         [[nodiscard]] uint8 size() const
         {
-            if (guids[2])
-            {
-                if (guids[4])
-                {
-                    return 5;
-                }
-                else if (guids[3])
-                {
-                    return 4;
-                }
-
-                return 3;
-            }
-            else if (guids[1])
-            {
-                return 2;
-            }
-            else if (guids[0])
-            {
-                return 1;
-            }
-
-            return 0;
+            uint8 result = 0;
+            while (result < LFG_MAX_QUEUE_ENTRIES && guids[result])
+                ++result;
+            return result;
         }
 
         void insert(ObjectGuid const& g)
         {
-            // avoid loops for performance
-            if (!guids[0])
-            {
-                guids[0] = g;
+            uint8 currentSize = size();
+            if (currentSize >= LFG_MAX_QUEUE_ENTRIES)
                 return;
-            }
 
-            if (g <= guids[0])
-            {
-                if (guids[3])
-                {
-                    guids[4] = guids[3];
-                }
+            uint8 position = 0;
+            while (position < currentSize && guids[position] < g)
+                ++position;
 
-                if (guids[2])
-                {
-                    guids[3] = guids[2];
-                }
+            for (uint8 i = currentSize; i > position; --i)
+                guids[i] = guids[i - 1];
 
-                if (guids[1])
-                {
-                    guids[2] = guids[1];
-                }
-
-                guids[1] = guids[0];
-                guids[0] = g;
-
-                return;
-            }
-
-            if (!guids[1])
-            {
-                guids[1] = g;
-                return;
-            }
-
-            if (g <= guids[1])
-            {
-                if (guids[3])
-                {
-                    guids[4] = guids[3];
-                }
-
-                if (guids[2])
-                {
-                    guids[3] = guids[2];
-                }
-
-                guids[2] = guids[1];
-                guids[1] = g;
-
-                return;
-            }
-
-            if (!guids[2])
-            {
-                guids[2] = g;
-                return;
-            }
-
-            if (g <= guids[2])
-            {
-                if (guids[3])
-                {
-                    guids[4] = guids[3];
-                }
-
-                guids[3] = guids[2];
-                guids[2] = g;
-
-                return;
-            }
-
-            if (!guids[3])
-            {
-                guids[3] = g;
-                return;
-            }
-
-            if (g <= guids[3])
-            {
-                guids[4] = guids[3];
-                guids[3] = g;
-                return;
-            }
-
-            guids[4] = g;
+            guids[position] = g;
         }
 
         void force_insert_front(ObjectGuid const& g)
         {
-            if (guids[3])
-            {
-                guids[4] = guids[3];
-            }
+            uint8 currentSize = size();
+            if (currentSize >= LFG_MAX_QUEUE_ENTRIES)
+                currentSize = LFG_MAX_QUEUE_ENTRIES - 1;
 
-            if (guids[2])
-            {
-                guids[3] = guids[2];
-            }
-
-            if (guids[1])
-            {
-                guids[2] = guids[1];
-            }
-
-            guids[1] = guids[0];
+            for (uint8 i = currentSize; i > 0; --i)
+                guids[i] = guids[i - 1];
             guids[0] = g;
         }
 
         void remove(ObjectGuid const& g)
         {
-            // avoid loops for performance
-            if (guids[0] == g)
-            {
-                if (guids[1])
+            uint8 currentSize = size();
+            uint8 position = currentSize;
+
+            for (uint8 i = 0; i < currentSize; ++i)
+                if (guids[i] == g)
                 {
-                    guids[0] = guids[1];
-                }
-                else
-                {
-                    guids[0].Clear();
-                    return;
+                    position = i;
+                    break;
                 }
 
-                if (guids[2])
-                {
-                    guids[1] = guids[2];
-                }
-                else
-                {
-                    guids[1].Clear();
-                    return;
-                }
-
-                if (guids[3])
-                {
-                    guids[2] = guids[3];
-                }
-                else
-                {
-                    guids[2].Clear();
-                    return;
-                }
-
-                if (guids[4])
-                {
-                    guids[3] = guids[4];
-                }
-                else
-                {
-                    guids[3].Clear();
-                    return;
-                }
-
-                guids[4].Clear();
+            if (position == currentSize)
                 return;
-            }
 
-            if (guids[1] == g)
-            {
-                if (guids[2])
-                {
-                    guids[1] = guids[2];
-                }
-                else
-                {
-                    guids[1].Clear();
-                    return;
-                }
+            for (uint8 i = position; i + 1 < currentSize; ++i)
+                guids[i] = guids[i + 1];
 
-                if (guids[3])
-                {
-                    guids[2] = guids[3];
-                }
-                else
-                {
-                    guids[2].Clear();
-                    return;
-                }
-
-                if (guids[4])
-                {
-                    guids[3] = guids[4];
-                }
-                else
-                {
-                    guids[3].Clear();
-                    return;
-                }
-
-                guids[4].Clear();
-                return;
-            }
-
-            if (guids[2] == g)
-            {
-                if (guids[3])
-                {
-                    guids[2] = guids[3];
-                }
-                else
-                {
-                    guids[2].Clear();
-                    return;
-                }
-
-                if (guids[4])
-                {
-                    guids[3] = guids[4];
-                }
-                else
-                {
-                    guids[3].Clear();
-                    return;
-                }
-
-                guids[4].Clear();
-                return;
-            }
-
-            if (guids[3] == g)
-            {
-                if (guids[4])
-                {
-                    guids[3] = guids[4];
-                }
-                else
-                {
-                    guids[3].Clear();
-                    return;
-                }
-
-                guids[4].Clear();
-                return;
-            }
-
-            if (guids[4] == g)
-            {
-                guids[4].Clear();
-            }
+            guids[currentSize - 1].Clear();
         }
 
         [[nodiscard]] bool hasGuid(ObjectGuid const& g) const
         {
-            return g && (guids[0] == g || guids[1] == g || guids[2] == g || guids[3] == g || guids[4] == g);
-        }
+            if (!g)
+                return false;
 
-        bool operator<(Lfg5Guids const& x) const
-        {
-            if (guids[0] <= x.guids[0])
-            {
-                if (guids[0] != x.guids[0])
-                {
+            for (uint8 i = 0; i < size(); ++i)
+                if (guids[i] == g)
                     return true;
-                }
-
-                if (guids[1] <= x.guids[1])
-                {
-                    if (guids[1] != x.guids[1])
-                    {
-                        return true;
-                    }
-
-                    if (guids[2] <= x.guids[2])
-                    {
-                        if (guids[2] != x.guids[2])
-                        {
-                            return true;
-                        }
-
-                        if (guids[3] <= x.guids[3])
-                        {
-                            if (guids[3] != x.guids[3])
-                            {
-                                return true;
-                            }
-
-                            if (guids[4] <= x.guids[4])
-                            {
-                                return !(guids[4] == x.guids[4]);
-                            }
-                        }
-                    }
-                }
-            }
 
             return false;
         }
 
+        bool operator<(Lfg5Guids const& x) const
+        {
+            return guids < x.guids;
+        }
+
         bool operator==(Lfg5Guids const& x) const
         {
-            return guids[0] == x.guids[0] && guids[1] == x.guids[1] && guids[2] == x.guids[2] && guids[3] == x.guids[3] && guids[4] == x.guids[4];
+            return guids == x.guids;
         }
 
         void operator=(Lfg5Guids const& x)
@@ -489,7 +257,14 @@ namespace lfg
         [[nodiscard]] std::string toString() const // for debugging
         {
             std::ostringstream o;
-            o << guids[0].ToString() << "," << guids[1].ToString() << "," << guids[2].ToString() << "," << guids[3].ToString() << "," << guids[4].ToString() << ":" << (roles ? 1 : 0);
+            uint8 currentSize = size();
+            for (uint8 i = 0; i < currentSize; ++i)
+            {
+                if (i)
+                    o << ",";
+                o << guids[i].ToString();
+            }
+            o << ":" << (roles ? 1 : 0);
             return o.str();
         }
     };

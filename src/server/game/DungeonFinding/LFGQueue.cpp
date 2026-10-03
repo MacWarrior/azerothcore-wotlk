@@ -108,6 +108,13 @@ namespace lfg
     {
         LOG_DEBUG("lfg", "JOINED AddQueueData: {}", guid.ToString());
         QueueDataStore[guid] = LfgQueueData(joinTime, dungeons, rolesMap);
+        LfgRoleRequirements requirements = sLFGMgr->GetLfgRoleRequirements(dungeons);
+        if (requirements.players)
+        {
+            QueueDataStore[guid].tanks = requirements.tanks;
+            QueueDataStore[guid].healers = requirements.healers;
+            QueueDataStore[guid].dps = requirements.dps;
+        }
         AddToQueue(guid);
     }
 
@@ -217,6 +224,67 @@ namespace lfg
                 it->roles = r;
             }
 
+        // Raid-sized matching must not enumerate every compatible subset.
+        // The historical algorithm was designed around 5 queue entries and
+        // becomes combinatorial once Lfg5Guids can contain 10/20/25/40.
+        auto newQueueItr = QueueDataStore.find(newGuid);
+        if (newQueueItr != QueueDataStore.end())
+        {
+            LfgRoleRequirements requirements =
+                sLFGMgr->GetLfgRoleRequirements(newQueueItr->second.dungeons);
+
+            if (requirements.players > MAXGROUPSIZE)
+            {
+                LfgCompatibility selfCompatibility = LFG_COMPATIBILITY_PENDING;
+                if (currentCompatibles.empty())
+                {
+                    selfCompatibility = CheckCompatibility(
+                        Lfg5Guids(), newGuid, foundMask, foundCount, currentCompatibles);
+                    if (selfCompatibility != LFG_COMPATIBLES_WITH_LESS_PLAYERS)
+                        return selfCompatibility;
+                }
+
+                std::vector<Lfg5Guids const*> candidates;
+                candidates.reserve(CompatibleList.size());
+                for (Lfg5Guids const& compatible : CompatibleList)
+                {
+                    if (compatible.empty() || compatible.hasGuid(newGuid))
+                        continue;
+                    if (compatible.size() >= requirements.players)
+                        continue;
+                    candidates.push_back(&compatible);
+                }
+
+                std::sort(candidates.begin(), candidates.end(),
+                    [](Lfg5Guids const* a, Lfg5Guids const* b)
+                    {
+                        return a->size() > b->size();
+                    });
+
+                constexpr uint32 RAID_COMPATIBILITY_SCAN_LIMIT = 128;
+                uint32 checked = 0;
+                for (Lfg5Guids const* compatible : candidates)
+                {
+                    LfgCompatibility compatibility = CheckCompatibility(
+                        *compatible, newGuid, foundMask, foundCount, currentCompatibles);
+
+                    if (compatibility == LFG_COMPATIBLES_MATCH ||
+                        compatibility == LFG_COMPATIBLES_WITH_LESS_PLAYERS)
+                        return compatibility;
+
+                    if (++checked >= RAID_COMPATIBILITY_SCAN_LIMIT)
+                    {
+                        LOG_WARN("lfg",
+                                 "LFG raid matcher reached bounded compatibility scan limit ({}) for {}",
+                                 RAID_COMPATIBILITY_SCAN_LIMIT, newGuid.ToString());
+                        break;
+                    }
+                }
+
+                return selfCompatibility;
+            }
+        }
+
         LfgCompatibility selfCompatibility = LFG_COMPATIBILITY_PENDING;
         if (currentCompatibles.empty())
         {
@@ -266,7 +334,7 @@ namespace lfg
         ObjectGuid guid;
         uint64 addToFoundMask = 0;
 
-        for (uint8 i = 0; i < 5 && !(guid = check.guids[i]).IsEmpty() && numLfgGroups < 2 && numPlayers <= MAXGROUPSIZE; ++i)
+        for (uint8 i = 0; i < check.size() && !(guid = check.guids[i]).IsEmpty() && numLfgGroups < 2; ++i)
         {
             LfgQueueDataContainer::iterator itQueue = QueueDataStore.find(guid);
             if (itQueue == QueueDataStore.end())
@@ -293,28 +361,44 @@ namespace lfg
         if (numLfgGroups > 1)
             return LFG_INCOMPATIBLES_MULTIPLE_LFG_GROUPS;
 
-        // Group with less that MAXGROUPSIZE members always compatible
-        if (!sLFGMgr->IsTesting() && check.size() == 1 && numPlayers < MAXGROUPSIZE)
+        proposalDungeons = QueueDataStore[check.front()].dungeons;
+        for (uint8 i = 1; i < check.size(); ++i)
+        {
+            LfgDungeonSet temporal;
+            LfgDungeonSet& dungeons = QueueDataStore[check.guids[i]].dungeons;
+            std::set_intersection(proposalDungeons.begin(), proposalDungeons.end(), dungeons.begin(), dungeons.end(), std::inserter(temporal, temporal.begin()));
+            std::swap(proposalDungeons, temporal);
+        }
+
+        if (proposalDungeons.empty())
+            return LFG_INCOMPATIBLES_NO_DUNGEONS;
+
+        LfgRoleRequirements requirements = sLFGMgr->GetLfgRoleRequirements(proposalDungeons);
+        if (!requirements.players)
+            return LFG_INCOMPATIBLES_NO_DUNGEONS;
+
+        // A single queued player/group that is still below target size is compatible by itself.
+        if (!sLFGMgr->IsTesting() && check.size() == 1 && numPlayers < requirements.players)
         {
             LfgQueueDataContainer::iterator itQueue = QueueDataStore.find(check.front());
             LfgRolesMap roles = itQueue->second.roles;
-            uint8 roleCheckResult = LFGMgr::CheckGroupRoles(roles);
+            uint8 roleCheckResult = LFGMgr::CheckGroupRoles(roles, requirements.tanks, requirements.healers, requirements.dps);
             strGuids.addRoles(roles);
             itQueue->second.bestCompatible.clear(); // this may be left after a failed proposal (not cleared, because UpdateQueueTimers would try to generate it with every update)
             //UpdateBestCompatibleInQueue(itQueue, strGuids);
             AddToCompatibles(strGuids);
-            if (roleCheckResult && roleCheckResult <= 15)
+            if (requirements.players == MAXGROUPSIZE && roleCheckResult && roleCheckResult <= 15)
                 foundMask |= ( (((uint64)1) << (roleCheckResult - 1)) | (((uint64)1) << (16 + roleCheckResult - 1)) | (((uint64)1) << (32 + roleCheckResult - 1)) | (((uint64)1) << (48 + roleCheckResult - 1)));
             return LFG_COMPATIBLES_WITH_LESS_PLAYERS;
         }
 
-        if (numPlayers > MAXGROUPSIZE)
+        if (numPlayers > requirements.players)
             return LFG_INCOMPATIBLES_TOO_MUCH_PLAYERS;
 
         // If it's single group no need to check for duplicate players, ignores, bad roles or bad dungeons as it's been checked before joining
         if (check.size() > 1)
         {
-            for (uint8 i = 0; i < 5 && check.guids[i]; ++i)
+            for (uint8 i = 0; i < check.size(); ++i)
             {
                 LfgRolesMap const& roles = QueueDataStore[check.guids[i]].roles;
                 for (LfgRolesMap::const_iterator itRoles = roles.begin(); itRoles != roles.end(); ++itRoles)
@@ -341,12 +425,12 @@ namespace lfg
             if (numPlayers != proposalRoles.size())
                 return LFG_INCOMPATIBLES_HAS_IGNORES;
 
-            uint8 roleCheckResult = LFGMgr::CheckGroupRoles(proposalRoles);
-            if (!roleCheckResult || roleCheckResult > 0xF)
+            uint8 roleCheckResult = LFGMgr::CheckGroupRoles(proposalRoles, requirements.tanks, requirements.healers, requirements.dps);
+            if (!roleCheckResult || (requirements.players == MAXGROUPSIZE && roleCheckResult > 0xF))
                 return LFG_INCOMPATIBLES_NO_ROLES;
 
-            // now, every combination can occur only 4 times (explained in FindNewGroups)
-            if (foundMask & (((uint64)1) << (roleCheckResult - 1)))
+            // The compact foundMask optimization only represents 5-player role combinations.
+            if (requirements.players == MAXGROUPSIZE && (foundMask & (((uint64)1) << (roleCheckResult - 1))))
             {
                 if (foundMask & (((uint64)1) << (16 + roleCheckResult - 1)))
                 {
@@ -366,35 +450,22 @@ namespace lfg
                 else
                     addToFoundMask |= (((uint64)1) << (16 + roleCheckResult - 1));
             }
-            else
+            else if (requirements.players == MAXGROUPSIZE)
                 addToFoundMask |= (((uint64)1) << (roleCheckResult - 1));
-
-            proposalDungeons = QueueDataStore[check.front()].dungeons;
-            for (uint8 i = 1; i < 5 && check.guids[i]; ++i)
-            {
-                LfgDungeonSet temporal;
-                LfgDungeonSet& dungeons = QueueDataStore[check.guids[i]].dungeons;
-                std::set_intersection(proposalDungeons.begin(), proposalDungeons.end(), dungeons.begin(), dungeons.end(), std::inserter(temporal, temporal.begin()));
-                std::swap(proposalDungeons, temporal);
-            }
-
-            if (proposalDungeons.empty())
-                return LFG_INCOMPATIBLES_NO_DUNGEONS;
         }
         else
         {
             ObjectGuid gguid = check.front();
             LfgQueueData const& queue = QueueDataStore[gguid];
-            proposalDungeons = queue.dungeons;
             proposalRoles = queue.roles;
-            LFGMgr::CheckGroupRoles(proposalRoles);          // assing new roles
+            LFGMgr::CheckGroupRoles(proposalRoles, requirements.tanks, requirements.healers, requirements.dps); // assign new roles
         }
 
         // Enough players?
-        if (!sLFGMgr->IsTesting() && numPlayers != MAXGROUPSIZE)
+        if (!sLFGMgr->IsTesting() && numPlayers != requirements.players)
         {
             strGuids.addRoles(proposalRoles);
-            for (uint8 i = 0; i < 5 && check.guids[i]; ++i)
+            for (uint8 i = 0; i < check.size(); ++i)
             {
                 LfgQueueDataContainer::iterator itr = QueueDataStore.find(check.guids[i]);
                 if (!itr->second.bestCompatible.empty()) // update if groups don't have it empty (for empty it will be generated in UpdateQueueTimers)
@@ -467,7 +538,7 @@ namespace lfg
 
         proposal.encounters = completedEncounters;
 
-        for (uint8 i = 0; i < 5 && proposal.queues.guids[i]; ++i)
+        for (uint8 i = 0; i < proposal.queues.size(); ++i)
             RemoveFromQueue(proposal.queues.guids[i], true);
 
         sLFGMgr->AddProposal(proposal);
@@ -513,7 +584,9 @@ namespace lfg
                 if (itQueue->second.bestCompatible.empty())
                 {
                     uint32 numOfCompatibles = FindBestCompatibleInQueue(itQueue);
-                    if (numOfCompatibles /*must be positive, because proposals don't delete QueueQueueData*/ && currTime - itQueue->second.lastRefreshTime >= 60 && numOfCompatibles < (5 - itQueue->second.bestCompatible.roles->size()) * 25)
+                    LfgRoleRequirements requirements = sLFGMgr->GetLfgRoleRequirements(itQueue->second.dungeons);
+                    uint32 missingPlayers = requirements.players > itQueue->second.bestCompatible.roles->size() ? requirements.players - itQueue->second.bestCompatible.roles->size() : 0;
+                    if (numOfCompatibles /*must be positive, because proposals don't delete QueueQueueData*/ && currTime - itQueue->second.lastRefreshTime >= 60 && numOfCompatibles < missingPlayers * 25)
                     {
                         itQueue->second.lastRefreshTime = currTime;
                         AddToQueue(itQueue->first, false);
@@ -604,9 +677,13 @@ namespace lfg
             return;
 
         queueData.bestCompatible = key;
-        queueData.tanks = LFG_TANKS_NEEDED;
-        queueData.healers = LFG_HEALERS_NEEDED;
-        queueData.dps = LFG_DPS_NEEDED;
+        LfgRoleRequirements requirements = sLFGMgr->GetLfgRoleRequirements(queueData.dungeons);
+        if (!requirements.players)
+            return;
+
+        queueData.tanks = requirements.tanks;
+        queueData.healers = requirements.healers;
+        queueData.dps = requirements.dps;
         for (LfgRolesMap::const_iterator it = key.roles->begin(); it != key.roles->end(); ++it)
         {
             uint8 role = it->second;
